@@ -5,6 +5,7 @@
 #include <zero/ZeroBot.h>
 #include <zero/behavior/Behavior.h>
 #include <zero/game/GameEvent.h>
+#include <zero/game/Logger.h>
 
 namespace zero {
 
@@ -14,32 +15,57 @@ struct ZoneController : EventHandler<ZeroBot::JoinRequestEvent>,
                         EventHandler<BotController::UpdateEvent>,
                         EventHandler<BehaviorChangeEvent> {
   void HandleEvent(const ZeroBot::JoinRequestEvent& event) override {
-    auto zone = event.server.zone;
-
-    bot = &event.bot;
-
-    in_zone = IsZone(event.server.zone);
-  }
+  auto zone = event.server.zone;
+  Log(LogLevel::Debug, "ZoneController JoinRequestEvent: zone=%s", to_string(zone));
+  bot = &event.bot;
+  in_zone = IsZone(event.server.zone);
+  Log(LogLevel::Debug, "ZoneController in_zone=%s", in_zone ? "true" : "false");
+}
 
   void HandleEvent(const JoinGameEvent& event) override {
-    if (!in_zone) return;
+  if (!in_zone) return;
 
-    const char* group_lookups[] = {to_string(bot->server_info.zone), "General"};
+  const char* group_lookups[] = {to_string(bot->server_info.zone), "General"};
 
-    auto opt_chats = bot->config->GetString(group_lookups, ZERO_ARRAY_SIZE(group_lookups), "Chat");
-    if (opt_chats) {
-      std::string chat_command = std::string("?chat=") + *opt_chats;
-      Event::Dispatch(ChatQueueEvent::Public(chat_command.data()));
-    }
-
-    auto opt_chat_broadcast = bot->config->GetInt(group_lookups, ZERO_ARRAY_SIZE(group_lookups), "CommandBroadcast");
-    if (opt_chat_broadcast) {
-      bot->commands->SetChatBroadcast(*opt_chat_broadcast);
-    }
+  auto opt_chats = bot->config->GetString(group_lookups, ZERO_ARRAY_SIZE(group_lookups), "Chat");
+  if (opt_chats) {
+    std::string chat_command = std::string("?chat=") + *opt_chats;
+    Event::Dispatch(ChatQueueEvent::Public(chat_command.data()));
   }
 
+  auto opt_chat_broadcast = bot->config->GetInt(group_lookups, ZERO_ARRAY_SIZE(group_lookups), "CommandBroadcast");
+  if (opt_chat_broadcast) {
+    bot->commands->SetChatBroadcast(*opt_chat_broadcast);
+  }
+
+  // NEW: Trigger behavior creation here since ArenaNameEvent may not fire for VIE clients
+  float radius = bot->game->connection.settings.ShipSettings[0].GetRadius();
+  auto request_ship = bot->config->GetInt(group_lookups, ZERO_ARRAY_SIZE(group_lookups), "RequestShip");
+  
+  if (request_ship && *request_ship >= 1 && *request_ship <= 8) {
+    radius = bot->game->connection.settings.ShipSettings[*request_ship - 1].GetRadius();
+  }
+
+  bot->bot_controller->UpdatePathfinder(radius);
+  bot->commands->Reset();
+  
+  // Use a default arena name since we can't get it from the server
+  CreateBehaviors("(public)");
+
+  auto default_behavior = bot->config->GetString(group_lookups, ZERO_ARRAY_SIZE(group_lookups), "Behavior");
+  if (default_behavior) {
+    SetBehavior(*default_behavior);
+  }
+
+  if (request_ship && *request_ship > 0 && *request_ship < 10) {
+    bot->execute_ctx.blackboard.Set("request_ship", *request_ship - 1);
+  }
+}
+
   void HandleEvent(const ArenaNameEvent& event) override {
-    if (!in_zone) return;
+  Log(LogLevel::Debug, "ZoneController ArenaNameEvent: in_zone=%s, arena=%s", in_zone ? "true" : "false", event.name);
+  if (!in_zone) return;
+
 
     // Assign standard variables with priority of zone name section then General if that fails.
     const char* group_lookups[] = {to_string(bot->server_info.zone), "General"};
