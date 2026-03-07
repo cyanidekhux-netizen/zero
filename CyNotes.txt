@@ -1,5 +1,10 @@
 Adapting Zero to function within HZ's Server.  Still very much a work in progress.  
 
+## Files Modified - Notes in those files
+
+### 1. `zero/zones/ZoneController.h`
+### 2. `zero/BotController.cpp`
+
 zero/zones/svs/Svs.cpp`
 **Problem:** SVS controller claims `Zone::Subgame`, conflicting with our HockeyZone controller.
 
