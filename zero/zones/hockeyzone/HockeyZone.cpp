@@ -5,6 +5,7 @@
 #include <zero/game/Logger.h>
 #include <zero/zones/ZoneController.h>
 #include <zero/zones/hockeyzone/HockeyBehavior.h>
+#include <zero/zones/hockeyzone/MLBehavior.h>
 
 namespace zero {
 namespace hockeyzone {
@@ -28,9 +29,16 @@ void HockeyZoneController::CreateBehaviors(const char* arena_name) {
 
   auto& repo = bot->bot_controller->behaviors;
 
-  repo.Add("hockey", std::make_unique<HockeyBehavior>());
+  // Hardcoded behavior - use with: Behavior = hockeyzone
+  repo.Add("hockeyzone", std::make_unique<HockeyBehavior>());
   
-  SetBehavior("hockey");
+  // ML behavior - use with: Behavior = hockeyzoneml
+  repo.Add("hockeyzoneml", std::make_unique<MLHockeyBehavior>());
+  
+  Log(LogLevel::Info, "Behaviors registered: 'hockeyzone' (hardcoded), 'hockeyzoneml' (ML)");
+  
+  // Default to ML - but zero.cfg [General] Behavior setting will override this
+  SetBehavior("hockeyzoneml");
 }
 
 }  // namespace hockeyzone
