@@ -29,7 +29,36 @@ void HockeyZoneController::HandleEvent(const ChatEvent& event) {
   
   std::string msg = event.message;
 
-  // Check if the message starts with "!setship "
+  // ===========================================================================
+  // THE CIRCUIT BREAKER: Cleanly swap behaviors and zero out all controls
+  // ===========================================================================
+  if (msg.rfind("!behavior ", 0) == 0) {
+    std::string target_behavior = msg.substr(10);
+    
+    Log(LogLevel::Info, "Behavior change requested to: %s. Initiating Circuit Breaker...", target_behavior.c_str());
+
+    // 1. Clear internal steering forces so the ship stops trying to fly
+    bot->bot_controller->steering.force = Vector2f(0, 0);
+
+    // 2. Lift the "fingers" off the physical input keys
+    if (bot->bot_controller->input) {
+        bot->bot_controller->input->SetAction(InputAction::Forward, false);
+        bot->bot_controller->input->SetAction(InputAction::Backward, false);
+        bot->bot_controller->input->SetAction(InputAction::Left, false);
+        bot->bot_controller->input->SetAction(InputAction::Right, false);
+        bot->bot_controller->input->SetAction(InputAction::Afterburner, false);
+        bot->bot_controller->input->SetAction(InputAction::Bullet, false);
+        bot->bot_controller->input->SetAction(InputAction::Bomb, false);
+    }
+    
+    // 3. Swap the Brain
+    SetBehavior(target_behavior.c_str());
+    return;
+  }
+
+  // ===========================================================================
+  // SHIP MANAGEMENT
+  // ===========================================================================
   if (msg.rfind("!setship ", 0) == 0) {
     int user_ship = atoi(msg.substr(9).c_str());
 
@@ -40,12 +69,12 @@ void HockeyZoneController::HandleEvent(const ChatEvent& event) {
     }
 
     if (user_ship == 9) {
-      Log(LogLevel::Info, "Spectator mode requested. Suspending ML AI.");
+      Log(LogLevel::Info, "Spectator mode requested. Suspending AI.");
       
       // Update blackboard just to keep it in sync
       bot->execute_ctx.blackboard.Set("request_ship", 8);
       
-      // Suspend the active behavior so the tree stops fighting us!
+      // Suspend the active behavior so the tree stops fighting us
       SetBehavior(""); 
       
       // Send the standard ship request packet to drop to spec
@@ -59,8 +88,11 @@ void HockeyZoneController::HandleEvent(const ChatEvent& event) {
       // Update blackboard for respawns
       bot->execute_ctx.blackboard.Set("request_ship", internal_ship);
       
-      // Re-enable the bot's brain so it starts playing again!
-      SetBehavior("hockeyzoneml");
+      // TRUE FIX: Only default to ML if the bot is currently brainless (like coming out of spec).
+      // If it's already a goalie, leave it alone!
+      if (bot->bot_controller->behavior_name.empty()) {
+          SetBehavior("hockeyzoneml");
+      }
       
       // Send the standard ship request packet
       bot->game->connection.SendShipRequest(internal_ship);
